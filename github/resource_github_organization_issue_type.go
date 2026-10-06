@@ -71,12 +71,19 @@ func resourceGithubOrganizationIssueTypeCreate(ctx context.Context, d *schema.Re
 		return diag.FromErr(err)
 	}
 
-	client := meta.(*Owner).v3client
-	orgName := meta.(*Owner).name
+	owner, ok := meta.(*Owner)
+	if !ok {
+		return diag.Errorf("unexpected provider metadata type %T", meta)
+	}
 
-	issueType, _, err := client.Organizations.CreateIssueType(ctx, orgName, organizationIssueTypeOptions(d))
+	options, err := organizationIssueTypeOptions(d)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating GitHub organization issue type (%s/%s): %w", orgName, d.Get("name").(string), err))
+		return diag.FromErr(err)
+	}
+
+	issueType, _, err := owner.v3client.Organizations.CreateIssueType(ctx, owner.name, options)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("error creating GitHub organization issue type (%s/%s): %w", owner.name, options.Name, err))
 	}
 
 	if err = d.Set("issue_type_id", issueType.GetID()); err != nil {
@@ -97,12 +104,14 @@ func resourceGithubOrganizationIssueTypeRead(ctx context.Context, d *schema.Reso
 		return diag.FromErr(err)
 	}
 
-	client := meta.(*Owner).v3client
-	orgName := meta.(*Owner).name
+	owner, ok := meta.(*Owner)
+	if !ok {
+		return diag.Errorf("unexpected provider metadata type %T", meta)
+	}
 
-	issueTypes, err := listOrganizationIssueTypes(ctx, client, orgName)
+	issueTypes, err := listOrganizationIssueTypes(ctx, owner.v3client, owner.name)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error querying GitHub organization issue types (%s): %w", orgName, err))
+		return diag.FromErr(fmt.Errorf("error querying GitHub organization issue types (%s): %w", owner.name, err))
 	}
 
 	var issueType *organizationIssueType
@@ -115,7 +124,7 @@ func resourceGithubOrganizationIssueTypeRead(ctx context.Context, d *schema.Reso
 
 	if issueType == nil {
 		tflog.Warn(ctx, "GitHub organization issue type not found, removing from state", map[string]any{
-			"orgName":     orgName,
+			"orgName":     owner.name,
 			"issueTypeId": issueTypeID,
 		})
 		d.SetId("")
@@ -150,12 +159,19 @@ func resourceGithubOrganizationIssueTypeUpdate(ctx context.Context, d *schema.Re
 		return diag.FromErr(err)
 	}
 
-	client := meta.(*Owner).v3client
-	orgName := meta.(*Owner).name
+	owner, ok := meta.(*Owner)
+	if !ok {
+		return diag.Errorf("unexpected provider metadata type %T", meta)
+	}
 
-	issueType, _, err := client.Organizations.UpdateIssueType(ctx, orgName, issueTypeID, organizationIssueTypeOptions(d))
+	options, err := organizationIssueTypeOptions(d)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error updating GitHub organization issue type (%s/%s): %w", orgName, d.Get("name").(string), err))
+		return diag.FromErr(err)
+	}
+
+	issueType, _, err := owner.v3client.Organizations.UpdateIssueType(ctx, owner.name, issueTypeID, options)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("error updating GitHub organization issue type (%s/%s): %w", owner.name, options.Name, err))
 	}
 
 	if err = d.Set("issue_type_id", issueType.GetID()); err != nil {
@@ -175,34 +191,47 @@ func resourceGithubOrganizationIssueTypeDelete(ctx context.Context, d *schema.Re
 		return diag.FromErr(err)
 	}
 
-	client := meta.(*Owner).v3client
-	orgName := meta.(*Owner).name
+	owner, ok := meta.(*Owner)
+	if !ok {
+		return diag.Errorf("unexpected provider metadata type %T", meta)
+	}
 
-	_, err = client.Organizations.DeleteIssueType(ctx, orgName, issueTypeID)
+	_, err = owner.v3client.Organizations.DeleteIssueType(ctx, owner.name, issueTypeID)
 	if err != nil {
 		if githubError, ok := errors.AsType[*github.ErrorResponse](err); ok && githubError.Response.StatusCode == http.StatusNotFound {
 			return nil
 		}
 
-		return diag.FromErr(fmt.Errorf("error deleting GitHub organization issue type (%s/%d): %w", orgName, issueTypeID, err))
+		return diag.FromErr(fmt.Errorf("error deleting GitHub organization issue type (%s/%d): %w", owner.name, issueTypeID, err))
 	}
 
 	return nil
 }
 
-func organizationIssueTypeOptions(d *schema.ResourceData) *github.CreateOrUpdateIssueTypesOptions {
-	options := &github.CreateOrUpdateIssueTypesOptions{
-		Name:      d.Get("name").(string),
-		IsEnabled: d.Get("enabled").(bool),
+func organizationIssueTypeOptions(d *schema.ResourceData) (*github.CreateOrUpdateIssueTypesOptions, error) {
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected organization issue type name value %T", d.Get("name"))
 	}
 
-	if value, ok := d.GetOk("description"); ok {
-		options.Description = new(value.(string))
+	enabled, ok := d.Get("enabled").(bool)
+	if !ok {
+		return nil, fmt.Errorf("unexpected organization issue type enabled value %T", d.Get("enabled"))
 	}
-	if value, ok := d.GetOk("color"); ok {
-		options.Color = new(value.(string))
+
+	options := &github.CreateOrUpdateIssueTypesOptions{
+		Name:      name,
+		IsEnabled: enabled,
 	}
-	return options
+
+	if description, found := resourceKeysGetOk[string](d, "description"); found {
+		options.Description = new(description)
+	}
+	if color, found := resourceKeysGetOk[string](d, "color"); found {
+		options.Color = new(color)
+	}
+
+	return options, nil
 }
 
 func listOrganizationIssueTypes(ctx context.Context, client *github.Client, orgName string) ([]*organizationIssueType, error) {
