@@ -1,0 +1,44 @@
+---
+page_title: "github_organization_issue_type (Resource) - GitHub"
+description: |-
+  Manage an issue type in a GitHub organization.
+---
+
+# github_organization_issue_type (Resource)
+
+Manage an issue type in a GitHub organization.
+
+## Example Usage
+
+```terraform
+resource "github_organization_issue_type" "example" {
+  name        = "Epic"
+  description = "A multi-week initiative composed of related tasks"
+  color       = "purple"
+  enabled     = true
+}
+```
+
+## Schema
+
+### Required
+
+- `name` (String) The name of the organization issue type.
+- `enabled` (Boolean) Whether the organization issue type is enabled.
+
+### Optional
+
+- `description` (String) The description of the organization issue type.
+- `color` (String) The color of the organization issue type. Valid values are `gray`, `blue`, `green`, `yellow`, `orange`, `red`, `pink`, and `purple`.
+
+### Read-Only
+
+- `issue_type_id` (Number) The ID of the organization issue type.
+
+## Import
+
+An organization issue type can be imported using its ID.
+
+```shell
+terraform import github_organization_issue_type.example 410
+```
